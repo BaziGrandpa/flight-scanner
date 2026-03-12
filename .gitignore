@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Local config / secrets
+config/local.yaml
+.env
+.env.*
+
+# Runtime data
+data/flight_scanner.db
+data/logs/
+data/reports/
+
+# Generated artifacts
+*.log

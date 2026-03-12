@@ -1,0 +1,44 @@
+origins:
+  - GOT
+  - CPH
+
+destinations:
+  - HKG
+  - PVG
+  - HND
+
+departure_window:
+  start: 2026-06-18
+  end: 2026-06-25
+
+trip_length_days:
+  min: 30
+  max: 45
+
+search:
+  max_api_queries: 24
+  cheapest_seed_count: 2
+  browser_local_queries_per_seed: 5
+  api_request_currency: EUR
+  target_currency: CNY
+  cabin: economy
+  adults: 1
+  request_spacing_seconds_min: 8
+  request_spacing_seconds_max: 18
+
+providers:
+  amadeus:
+    base_url: https://test.api.amadeus.com
+    api_key: Paste your Amadeus API key here
+    api_secret: Paste your Amadeus API secret here
+    api_key_env: AMADEUS_API_KEY
+    api_secret_env: AMADEUS_API_SECRET
+  trip:
+    enabled: true
+    currency_hint: USD
+
+data:
+  db_path: data/flight_scanner.db
+  report_dir: data/reports
+  latest_report_name: latest_summary.md
+  log_dir: data/logs
