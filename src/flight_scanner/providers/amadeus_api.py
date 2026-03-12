@@ -6,6 +6,8 @@ from typing import Any
 
 import requests
 
+from ..db import connect, get_api_cache, put_api_cache
+
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -19,6 +21,8 @@ class AmadeusApiClient:
         self.api_secret = provider_cfg.get('api_secret') or os.environ.get(provider_cfg['api_secret_env'])
         if not self.api_key or not self.api_secret:
             raise RuntimeError('Missing Amadeus API credentials in config or environment')
+        self.db_path = config['data']['db_path']
+        self.cache_ttl_hours = int(config['search'].get('api_cache_ttl_hours', 24))
         self._access_token: str | None = None
 
     def _get_token(self) -> str:
@@ -43,6 +47,19 @@ class AmadeusApiClient:
         return token
 
     def search(self, query: dict, currency: str = 'EUR', adults: int = 1) -> list[dict[str, Any]]:
+        conn = connect(self.db_path)
+        try:
+            cache_status, cached = get_api_cache(conn, 'amadeus_api', query, self.cache_ttl_hours)
+            if cache_status == 'hit' and cached is not None:
+                print(f"[amadeus] cache_hit query={query}")
+                return cached
+            if cache_status == 'expired':
+                print(f"[amadeus] cache_expired query={query}")
+            else:
+                print(f"[amadeus] cache_miss query={query}")
+        finally:
+            conn.close()
+
         token = self._get_token()
         resp = requests.get(
             f'{self.base_url}/v2/shopping/flight-offers',
@@ -63,6 +80,7 @@ class AmadeusApiClient:
         offers = payload.get('data', [])
         carriers = payload.get('dictionaries', {}).get('carriers', {})
         normalized = []
+        fetched_at = _now_iso()
         for offer in offers:
             validating = offer.get('validatingAirlineCodes', [])
             airline_code = validating[0] if validating else None
@@ -79,7 +97,17 @@ class AmadeusApiClient:
                 'duration_text': None,
                 'departure_time': None,
                 'arrival_time': None,
-                'fetched_at': _now_iso(),
+                'fetched_at': fetched_at,
                 'raw_payload': offer,
             })
+
+        if normalized:
+            conn = connect(self.db_path)
+            try:
+                put_api_cache(conn, 'amadeus_api', query, fetched_at, normalized)
+                print(f"[amadeus] cache_store count={len(normalized)} query={query}")
+            finally:
+                conn.close()
+        else:
+            print(f"[amadeus] empty_result_no_cache query={query}")
         return normalized

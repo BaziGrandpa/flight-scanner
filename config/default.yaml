@@ -21,6 +21,7 @@ search:
   browser_local_queries_per_seed: 5
   api_request_currency: EUR
   target_currency: CNY
+  api_cache_ttl_hours: 24
   cabin: economy
   adults: 1
   request_spacing_seconds_min: 8
