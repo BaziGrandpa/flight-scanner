@@ -145,6 +145,7 @@ This structure is intentionally small.
 - browser local queries per seed
 - request currency
 - target currency
+- API cache TTL in hours
 - cabin
 - adults
 
@@ -248,6 +249,21 @@ If there are 6 route pairs:
 
 This fits the target of roughly 20–30 API searches.
 
+### API query cache
+
+To avoid repeating the same coarse API queries multiple times in a short period, the Amadeus layer should use a database-backed query cache.
+
+Current implementation behavior:
+
+- cache key = `origin + destination + departure_date + return_date`
+- cache freshness is controlled by a configurable TTL in hours
+- cached payload stores the full normalized result list for one coarse API query
+- empty API results are **not** cached
+- expired cache rows are left in place for now; the newest row is checked first
+- cache behavior is logged with `cache_hit`, `cache_miss`, `cache_expired`, and `cache_store`
+
+This keeps the API budget low while preserving a simple implementation.
+
 ## Stage 2: Trip.com local verification
 
 Purpose:
@@ -316,6 +332,19 @@ In practice, this means the verifier does not need to depend on only one layer.
 If the visible page is slow or partially unstable, the stable UI markers still provide a strong debugging and readiness signal.
 
 Trip.com is the current best fit for the implemented V1.
+
+### Challenge-page handling
+
+Trip.com may sometimes return a verification or puzzle challenge page instead of a real result page.
+
+Current implementation behavior:
+
+- detect challenge text markers such as `verification test`, `Select icons in the correct order`, and `Slide to complete the puzzle`
+- log the event explicitly as `verification_challenge_detected`
+- stop the remaining Trip verification queries immediately for the current batch
+- return the results already collected so the run can finish without further touching Trip.com in the same session
+
+This is intentionally conservative: once challenge is detected, the verifier should stop rather than continue probing and risk increasing the site's anti-bot response.
 
 ## Result handling
 
@@ -500,7 +529,7 @@ Load and validate the simple config.
 Define the minimal normalized result model.
 
 ### `db.py`
-Create the single results table and insert rows.
+Create the results table, create the API query cache table, and handle row insertion plus cache read/write helpers.
 
 ### `query_builder.py`
 Generate:
@@ -524,10 +553,10 @@ Run the full daily flow:
 Write the top-5 Markdown summary.
 
 ### `providers/amadeus_api.py`
-Run the coarse API scan.
+Run the coarse API scan and use the database-backed query cache before calling the remote API.
 
 ### `providers/trip_verifier.py`
-Run the 5-query Trip.com local verification for each selected seed.
+Run the 5-query Trip.com local verification for each selected seed, detect challenge pages, and stop the remaining Trip queries early when challenge is triggered.
 
 ## Recommended implementation order
 

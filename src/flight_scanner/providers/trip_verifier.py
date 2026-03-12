@@ -115,11 +115,27 @@ def _safe_is_visible(locator) -> bool:
     except Exception:
         return False
 
-def wait_trip_results_ready(page, timeout=45000, interval_ms=1000, stable_rounds=2) -> bool:
+
+def _detect_verification_challenge(text: str) -> bool:
+    lowered = text.lower()
+    challenge_markers = [
+        'complete the verification test below',
+        'select icons in the correct order',
+        'slide to complete the puzzle',
+        'verification test',
+    ]
+    return any(marker in lowered for marker in challenge_markers)
+
+
+def wait_trip_results_ready(page, timeout=45000, interval_ms=1000, stable_rounds=2) -> tuple[bool, str | None]:
     deadline = time.time() + timeout / 1000
     stable_hits = 0
 
     while time.time() < deadline:
+        text = _normalize_text(page.locator('body').inner_text(timeout=15000))
+        if _detect_verification_challenge(text):
+            return False, 'challenge'
+
         frame_signals = [
             _safe_is_visible(page.get_by_text("Recommended", exact=True)),
             _safe_is_visible(page.get_by_text("Alliance", exact=True)),
@@ -139,13 +155,13 @@ def wait_trip_results_ready(page, timeout=45000, interval_ms=1000, stable_rounds
         if frame_ok and result_ok:
             stable_hits += 1
             if stable_hits >= stable_rounds:
-                return True
+                return True, None
         else:
             stable_hits = 0
 
         page.wait_for_timeout(interval_ms)
 
-    return False
+    return False, None
 
 
 class TripVerifier:
@@ -158,12 +174,16 @@ class TripVerifier:
         results = []
         with sync_playwright() as p:
             for idx, query in enumerate(queries):
-                results.extend(self._run_once(p, query))
+                items, should_stop = self._run_once(p, query)
+                results.extend(items)
+                if should_stop:
+                    print(f"[trip] challenge_detected_stop_remaining_queries query={query}")
+                    break
                 if idx < len(queries) - 1:
                     time.sleep(random.randint(self.sleep_min, self.sleep_max))
         return results
 
-    def _run_once(self, playwright, query: dict) -> list[dict]:
+    def _run_once(self, playwright, query: dict) -> tuple[list[dict], bool]:
         ua = random.choice(UA_POOL)
         browser = playwright.chromium.launch(
             headless=True,
@@ -194,10 +214,13 @@ class TripVerifier:
             #     except PlaywrightTimeoutError:
             #         print(f"[trip] networkidle timeout pass={idx + 1} query={query}")
             #     page.wait_for_timeout(random.randint(1800, 3200))
-            ok = wait_trip_results_ready(page, timeout=45000, interval_ms=1000)
+            ok, failure_reason = wait_trip_results_ready(page, timeout=45000, interval_ms=1000)
             if not ok:
+                if failure_reason == 'challenge':
+                    print(f"[trip] verification_challenge_detected query={query}")
+                    return [], True
                 print(f"[trip] results not ready in time, giving up query={query}")
-                return []
+                return [], False
 
             text = _normalize_text(page.locator('body').inner_text(timeout=15000))
             text_len = len(text)
@@ -208,7 +231,7 @@ class TripVerifier:
             print(f"[trip] body_head query={query} text={text[:500]}")
             cards = _extract_cards(text, query['origin'], query['destination'], query['departure_date'], query['return_date'])
             print(f"[trip] extract_cards count={len(cards)} query={query}")
-            return cards
+            return cards, False
         finally:
             context.close()
             browser.close()
