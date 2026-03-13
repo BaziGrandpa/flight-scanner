@@ -61,13 +61,15 @@ def _clean_airline(value: str | None) -> str | None:
 
 def _extract_cards(text: str, origin: str, destination: str, departure_date: str, return_date: str) -> list[dict]:
     pattern = (
-        r'(?P<airline>[A-Z][A-Za-z&\- ]+?)'
+        r'(?P<airline>[A-Z][A-Za-z&\-,/ ]+?)'
         r'(?:\s+operated by[^\d]*)?\s+'
-        r'(?P<dep>\d{2}:\d{2})\s+' + re.escape(origin) +
-        r'\s+(?P<duration>\d+h\s+\d+m)'
+        r'(?P<dep>\d{2}:\d{2})\s+'
+        r'(?P<dep_airport>[A-Z]{3}(?:\s+[A-Z0-9+]+){0,3})\s+'
+        r'(?P<duration>\d+h\s+\d+m)'
         r'(?:\s+(?P<stopover>\d+h\s+\d+m\s+in\s+[A-Za-z\- ]+))?'
-        r'\s+(?P<arr>\d{2}:\d{2})\s+' + re.escape(destination) +
-        r'.{0,120}?(?P<price>US\$\s?\d+[\d,]*)'
+        r'\s+(?P<arr>\d{2}:\d{2})\s+'
+        r'(?P<arr_airport>[A-Z]{3}(?:\s+[A-Z0-9+]+){0,3})'
+        r'.{0,160}?(?P<price>US\$\s?\d+[\d,]*)'
     )
     matches = re.finditer(pattern, text)
     cards = []

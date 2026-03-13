@@ -85,7 +85,20 @@ def run_scan(config: dict) -> dict:
         converted_api_results.append(item)
     converted_api_results.sort(key=lambda x: x['price'])
 
-    seeds = converted_api_results[: search_cfg.get('cheapest_seed_count', 2)]
+    unique_seed_map = {}
+    for item in converted_api_results:
+        seed_key = (
+            item['origin'],
+            item['destination'],
+            item['departure_date'],
+            item['return_date'],
+        )
+        existing = unique_seed_map.get(seed_key)
+        if existing is None or item['price'] < existing['price']:
+            unique_seed_map[seed_key] = item
+
+    unique_seed_results = sorted(unique_seed_map.values(), key=lambda x: x['price'])
+    seeds = unique_seed_results[: search_cfg.get('cheapest_seed_count', 2)]
 
     trip_queries = []
     for seed in seeds:
